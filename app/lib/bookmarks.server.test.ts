@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestDb, seedBaseData } from "~/test/setup";
+import { createTestDb, seedBaseData, seedLessons } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { UserRole } from "~/db/schema";
 import { isBookmarked, listBookmarks, toggleBookmark } from "./bookmarks.server";
@@ -19,21 +19,7 @@ let lessonIds: number[];
 beforeEach(() => {
   db = createTestDb();
   base = seedBaseData(db);
-
-  const module = db
-    .insert(schema.modules)
-    .values({ courseId: base.course.id, title: "Basics", position: 1 })
-    .returning()
-    .get();
-
-  lessonIds = [1, 2].map(
-    (position) =>
-      db
-        .insert(schema.lessons)
-        .values({ moduleId: module.id, title: `Lesson ${position}`, position })
-        .returning()
-        .get().id
-  );
+  lessonIds = seedLessons(db, base.course.id, 2);
 });
 
 describe("toggling a Bookmark", () => {

@@ -13,7 +13,6 @@ import {
 import { defaultNotifications } from "~/lib/notifications.server";
 import { isBookmarked, toggleBookmark } from "~/lib/bookmarks.server";
 import { getNote, saveNote } from "~/lib/notes.server";
-import { MAX_NOTE_LENGTH } from "~/lib/notes";
 import {
   CommentThread,
   type RenderedComment,
@@ -90,14 +89,7 @@ const editCommentSchema = z.object({
 });
 
 const saveNoteSchema = z.object({
-  body: z
-    .string()
-    .trim()
-    .min(1, "Write something before saving your note.")
-    .max(
-      MAX_NOTE_LENGTH,
-      `Your note is over ${MAX_NOTE_LENGTH.toLocaleString("en")} characters, so it was not saved.`
-    ),
+  body: z.string(),
 });
 
 const deleteCommentSchema = z.object({
@@ -193,15 +185,16 @@ function getModuleById(id: number) {
 }
 
 /**
- * Throws 404 unless the lesson is in the course, so content access to one
- * course can't reach a lesson in another by posting its id to this route.
+ * The lesson and its module, or a thrown 404 unless the lesson is in the
+ * course — so content access to one course can't reach a lesson in another.
  */
 function requireLessonInCourse(lessonId: number, courseId: number) {
   const lesson = getLessonById(lessonId);
   const mod = lesson ? getModuleById(lesson.moduleId) : undefined;
-  if (!mod || mod.courseId !== courseId) {
+  if (!lesson || !mod || mod.courseId !== courseId) {
     throw data("Lesson not found in this course", { status: 404 });
   }
+  return { lesson, mod };
 }
 
 function getUserById(id: number) {
@@ -653,20 +646,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found", { status: 404 });
   }
 
-  const lesson = getLessonById(lessonId);
-  if (!lesson) {
-    throw data("Lesson not found", { status: 404 });
-  }
-
-  const mod = getModuleById(lesson.moduleId);
-  if (!mod) {
-    throw data("Module not found", { status: 404 });
-  }
-
-  // Verify lesson belongs to this course
-  if (mod.courseId !== course.id) {
-    throw data("Lesson not found in this course", { status: 404 });
-  }
+  const { lesson, mod } = requireLessonInCourse(lessonId, course.id);
 
   const access = await getAccess(request, course.id);
   const currentUserId = access.userId;
@@ -721,14 +701,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   // The Student's own Bookmark and Note on this lesson, behind the same
   // content-access bar as the discussion. A signed-out visitor gets neither.
-  const bookmarked =
-    canViewContent && currentUserId
-      ? isBookmarked(db, currentUserId, lessonId)
-      : false;
-  const note =
-    canViewContent && currentUserId
-      ? getNote(db, currentUserId, lessonId)
-      : undefined;
+  const ownStudentId = canViewContent ? currentUserId : null;
+  const bookmarked = ownStudentId
+    ? isBookmarked(db, ownStudentId, lessonId)
+    : false;
+  const note = ownStudentId ? getNote(db, ownStudentId, lessonId) : undefined;
 
   // Render lesson content from Markdown to HTML server-side
   const contentHtml = lesson.content
@@ -824,6 +801,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     canViewContent,
     canModerate: access.isStaff,
     instructorName: instructor?.name ?? "your instructor",
+    canBookmarkAndNote: ownStudentId !== null,
     bookmarked,
     note: note ? { body: note.body, updatedAt: note.updatedAt } : null,
   };
@@ -936,7 +914,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
     const parsed = parseFormData(formData, saveNoteSchema);
     if (!parsed.success) {
-      return { ok: false, error: parsed.errors.body };
+      return { ok: false, error: "Write something before saving your note." };
     }
     const saved = saveNote(
       db,
@@ -1035,6 +1013,7 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
     canViewContent,
     canModerate,
     instructorName,
+    canBookmarkAndNote,
     bookmarked,
     note,
   } = loaderData;
@@ -1139,9 +1118,7 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
           {/* Lesson Title */}
           <div className="mb-2 flex items-start justify-between gap-3">
             <h1 className="text-3xl font-bold">{lesson.title}</h1>
-            {canViewContent && currentUserId && (
-              <BookmarkToggle bookmarked={bookmarked} />
-            )}
+            {canBookmarkAndNote && <BookmarkToggle bookmarked={bookmarked} />}
           </div>
           <div className="mb-6 flex items-center gap-3">
             {lesson.durationMinutes && (
@@ -1180,7 +1157,7 @@ export default function LessonViewer({ loaderData }: Route.ComponentProps) {
           )}
 
           {/* Note — under the video, so the Student can write while they watch */}
-          {canViewContent && currentUserId && <LessonNote note={note} />}
+          {canBookmarkAndNote && <LessonNote note={note} />}
 
           {/* Lesson Content */}
           {contentHtml && (

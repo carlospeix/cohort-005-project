@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createTestDb, seedBaseData } from "~/test/setup";
+import { createTestDb, seedBaseData, seedLessons } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { UserRole } from "~/db/schema";
 import { getNote, listNotes, saveNote } from "./notes.server";
@@ -19,21 +19,7 @@ let lessonIds: number[];
 beforeEach(() => {
   db = createTestDb();
   base = seedBaseData(db);
-
-  const module = db
-    .insert(schema.modules)
-    .values({ courseId: base.course.id, title: "Basics", position: 1 })
-    .returning()
-    .get();
-
-  lessonIds = [1, 2].map(
-    (position) =>
-      db
-        .insert(schema.lessons)
-        .values({ moduleId: module.id, title: `Lesson ${position}`, position })
-        .returning()
-        .get().id
-  );
+  lessonIds = seedLessons(db, base.course.id, 2);
 });
 
 describe("saving a Note", () => {
@@ -80,7 +66,7 @@ describe("saving a Note", () => {
   it("refuses a Note over 2000 characters", () => {
     expect(saveNote(db, base.user.id, lessonIds[0], "a".repeat(2001), NOW)).toEqual({
       ok: false,
-      error: "Note must be 2000 characters or fewer",
+      error: "Your note is over 2,000 characters, so it was not saved.",
     });
     expect(getNote(db, base.user.id, lessonIds[0])).toBeUndefined();
   });
@@ -88,7 +74,7 @@ describe("saving a Note", () => {
   it("refuses a Note that is only whitespace", () => {
     expect(saveNote(db, base.user.id, lessonIds[0], "   ", NOW)).toEqual({
       ok: false,
-      error: "Write something before saving your note",
+      error: "Write something before saving your note.",
     });
   });
 

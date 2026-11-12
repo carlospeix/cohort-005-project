@@ -1,6 +1,7 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "~/db/schema";
 import { and, desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import { courses, lessons, modules, notes } from "~/db/schema";
 import { savedLessonColumns } from "~/lib/saved-lesson.server";
 import { MAX_NOTE_LENGTH } from "~/lib/notes";
@@ -35,6 +36,16 @@ export function getNote(
 
 export type SaveNoteResult = { ok: true; note: Note } | { ok: false; error: string };
 
+/** A Note body: plain text, trimmed, not empty, capped at MAX_NOTE_LENGTH. */
+const noteBodySchema = z
+  .string()
+  .trim()
+  .min(1, "Write something before saving your note.")
+  .max(
+    MAX_NOTE_LENGTH,
+    `Your note is over ${MAX_NOTE_LENGTH.toLocaleString("en")} characters, so it was not saved.`
+  );
+
 /**
  * Writes the Student's Note on the Lesson. Saving again replaces the body and
  * moves `updatedAt` on; `createdAt` stays where it was.
@@ -46,16 +57,11 @@ export function saveNote(
   body: string,
   now: Date
 ): SaveNoteResult {
-  const trimmed = body.trim();
-  if (trimmed.length === 0) {
-    return { ok: false, error: "Write something before saving your note" };
+  const parsed = noteBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0].message };
   }
-  if (trimmed.length > MAX_NOTE_LENGTH) {
-    return {
-      ok: false,
-      error: `Note must be ${MAX_NOTE_LENGTH} characters or fewer`,
-    };
-  }
+  const trimmed = parsed.data;
 
   const at = now.toISOString();
   const note = db
