@@ -72,6 +72,8 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS bookmarks;
+    DROP TABLE IF EXISTS notes;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -2229,6 +2231,49 @@ This course is still in draft while the cluster examples are rewritten against t
   addWatchSession(students[3].id, course2LessonIds[0], 0, 300, 600, 22 * 24);
   addWatchSession(students[3].id, course2LessonIds[0], 300, 360, 600, 21 * 24);
 
+  // ─── Bookmarks and Notes ───
+  // Private to each Student. Emma flags lessons across both her courses and
+  // keeps notes; James has one of each on course 1.
+
+  db.insert(schema.bookmarks)
+    .values([
+      { userId: students[0].id, lessonId: course1LessonIds[0], createdAt: daysAgo(49) },
+      { userId: students[0].id, lessonId: course1LessonIds[2], createdAt: daysAgo(30) },
+      { userId: students[0].id, lessonId: course2LessonIds[1], createdAt: daysAgo(6) },
+      { userId: students[1].id, lessonId: course1LessonIds[0], createdAt: daysAgo(44) },
+    ])
+    .run();
+
+  db.insert(schema.notes)
+    .values([
+      {
+        userId: students[0].id,
+        lessonId: course1LessonIds[0],
+        body: "Rewatch the part on #types around 3:00.\n* Try the exercise again without hints.",
+        createdAt: daysAgo(50),
+        updatedAt: daysAgo(49),
+      },
+      {
+        userId: students[0].id,
+        lessonId: course2LessonIds[1],
+        body: "Good summary of the trade-offs. Come back before the quiz.",
+        createdAt: daysAgo(6),
+        updatedAt: daysAgo(6),
+      },
+      {
+        userId: students[1].id,
+        lessonId: course1LessonIds[0],
+        body: "Ask in the discussion about the second example.",
+        createdAt: daysAgo(45),
+        updatedAt: daysAgo(45),
+      },
+    ])
+    .run();
+
+  console.log(
+    `Created ${countRows(schema.bookmarks)} bookmarks and ${countRows(schema.notes)} notes.`
+  );
+
   // ─── Purchases ───
   // Individual purchases for enrolled students
 
@@ -2847,6 +2892,9 @@ This course is still in draft while the cluster examples are rewritten against t
   console.log(`  Enrollments: ${countRows(schema.enrollments)}`);
   console.log(`  Course ratings: ${countRows(schema.courseRatings)}`);
   console.log(`  Lesson comments: ${countRows(schema.comments)}`);
+  console.log(
+    `  Bookmarks: ${countRows(schema.bookmarks)}, notes: ${countRows(schema.notes)}`
+  );
   console.log(
     `  Lesson progress: ${countRows(schema.lessonProgress)} (${countRows(schema.lessonProgress, eq(schema.lessonProgress.status, LessonProgressStatus.Completed))} completed)`
   );

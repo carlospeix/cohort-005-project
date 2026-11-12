@@ -75,3 +75,28 @@ export function seedBaseData(testDb: ReturnType<typeof createTestDb>) {
 
   return { user, instructor, category, course };
 }
+
+/**
+ * Seeds one module in the course with `count` lessons. Returns the lesson IDs
+ * in position order.
+ */
+export function seedLessons(
+  testDb: ReturnType<typeof createTestDb>,
+  courseId: number,
+  count: number
+) {
+  const module = testDb
+    .insert(schema.modules)
+    .values({ courseId, title: "Basics", position: 1 })
+    .returning()
+    .get();
+
+  return Array.from({ length: count }, (_, i) => i + 1).map(
+    (position) =>
+      testDb
+        .insert(schema.lessons)
+        .values({ moduleId: module.id, title: `Lesson ${position}`, position })
+        .returning()
+        .get().id
+  );
+}
